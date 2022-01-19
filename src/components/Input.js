@@ -7,11 +7,13 @@ import {
   Flex,
   Grid,
   Inline,
+  Select,
   Stack,
   studioTheme,
   Text,
   ThemeProvider,
 } from '@sanity/ui'
+import {TrashIcon} from '@sanity/icons'
 import SetupIcon from 'part:@sanity/base/plugin-icon'
 import {observePaths} from 'part:@sanity/base/preview'
 import DialogContent from 'part:@sanity/components/dialogs/content'
@@ -20,7 +22,7 @@ import FormField from 'part:@sanity/components/formfields/default'
 import Spinner from 'part:@sanity/components/loading/spinner'
 import {withDocument} from 'part:@sanity/form-builder'
 import PatchEvent, {set, setIfMissing, unset} from 'part:@sanity/form-builder/patch-event'
-import React, {Component} from 'react'
+import React, {Component, useEffect, useState} from 'react'
 import {of} from 'rxjs'
 import {tap} from 'rxjs/operators'
 import {deleteAsset, getAsset} from '../actions/assets'
@@ -34,6 +36,10 @@ import Setup from './Setup'
 import Uploader from './Uploader'
 import Video from './Video'
 import config from '../config'
+import {LANGUAGE_BY_LOCALE} from '../util/locales'
+import FileInputButton from './FileInputButton'
+import {ref, storage} from '../util/firebase'
+import {getDownloadURL, uploadBytes} from 'firebase/storage'
 
 const NOOP = () => {
   /* intentional noop */
@@ -76,6 +82,145 @@ function getSecrets() {
   })
 }
 
+function MuxCaptions({documentId, tracks, assetId}) {
+  const [subtitlesLoading, setSubtitlesLoading] = useState(false)
+  const [locale, setLocale] = useState('en')
+  const [deleting, setDeleting] = useState(false)
+  async function getAsset() {
+    const {secrets} = await getSecrets()
+    const asset = await fetch(`https://api.mux.com/video/v1/assets/${assetId}`, {
+      headers: {
+        authorization: 'Basic ' + btoa(secrets.token + ':' + secrets.secretKey),
+        'content-type': 'application/json',
+      },
+    }).then((res) => res.json())
+    return asset
+  }
+  async function updateAsset() {
+    const asset = await getAsset()
+    await client
+      .patch(documentId)
+      .set({
+        data: asset.data,
+      })
+      .commit({returnDocuments: false})
+  }
+
+  async function handleAddSubtitles(files) {
+    const file = files[0]
+    try {
+      setSubtitlesLoading(true)
+      const asset = await getAsset()
+
+      // Delete the track if it already exists
+      const track = asset.data.tracks.find(
+        (t) => t.text_type === 'subtitles' && t.language_code === locale
+      )
+      if (track) {
+        await handleDeleteSubtitles(trackId, true)
+      }
+
+      // Mux doesn't allow direct subtitle uploads. We have to upload it somewhere else, and then
+      // pass the URL to Mux.
+      const fileRef = ref(storage, `uploads/subtitles/${documentId}/${file.name}`)
+      await uploadBytes(fileRef, file)
+      const downloadUrl = await getDownloadURL(fileRef)
+      const {secrets} = await getSecrets()
+      console.log({
+        type: 'text',
+        text_type: 'subtitles',
+        language_code: locale,
+        url: downloadUrl,
+      })
+      // Now upload to Mux
+      const muxSubtitles = await fetch(`https://api.mux.com/video/v1/assets/${assetId}/tracks`, {
+        method: 'POST',
+        headers: {
+          authorization: 'Basic ' + btoa(secrets.token + ':' + secrets.secretKey),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'text',
+          text_type: 'subtitles',
+          language_code: locale,
+          url: downloadUrl,
+        }),
+      }).then((res) => res.json())
+      await updateAsset()
+      setSubtitlesLoading(false)
+    } catch (err) {
+      console.error(err)
+      setSubtitlesLoading(false)
+    }
+  }
+  async function handleDeleteSubtitles(trackId, skipRefresh) {
+    setDeleting(trackId)
+    try {
+      await fetch(`https://api.mux.com/video/v1/assets/${assetId}/tracks/${trackId}`, {
+        method: 'DELETE',
+        headers: {
+          authorization: 'Basic ' + btoa(cachedSecrets.token + ':' + cachedSecrets.secretKey),
+          'content-type': 'application/json',
+        },
+      })
+      if (!skipRefresh) {
+        await updateAsset()
+      }
+    } catch (err) {
+      setDeleting(false)
+    }
+    setDeleting(false)
+  }
+  if (!tracks) return null
+  return (
+    <Box padding={[1, 1, 1, 2]}>
+      <details>
+        <summary>Captions</summary>
+        <ul>
+          {tracks
+            .filter((t) => t.type === 'text')
+            .map((t) => (
+              <li key={t.id} style={{display: 'flex', justifyContent: 'space-between'}}>
+                <span>
+                  {t.name} <small>{t.language_code}</small>
+                </span>
+                <Button
+                  fontSize={[1, 1, 2]}
+                  icon={TrashIcon}
+                  mode="bleed"
+                  padding={[2, 2, 3]}
+                  tone="critical"
+                  onClick={() => handleDeleteSubtitles(t.id)}
+                  loading={deleting === t.id}
+                  disabled={deleting === t.id}
+                />
+              </li>
+            ))}
+        </ul>
+        <Box display="flex">
+          <Select value={locale} onChange={(e) => setLocale(e.target.value)}>
+            {Object.entries(LANGUAGE_BY_LOCALE).map(([locale, label]) => {
+              return (
+                <option key={locale} value={locale}>
+                  {label}
+                </option>
+              )
+            })}
+          </Select>
+          <FileInputButton
+            mode="ghost"
+            tone="primary"
+            onSelect={handleAddSubtitles}
+            loading={subtitlesLoading}
+            text="Upload Subtitles"
+            accept=".srt,text/plain"
+          />
+        </Box>
+      </details>
+    </Box>
+  )
+}
+
 export default withDocument(
   class MuxVideoInput extends Component {
     state = {
@@ -108,7 +253,6 @@ export default withDocument(
           })
         })
         .catch((error) => this.setState({error}))
-
       this.setupButton = React.createRef()
       this.pollInterval = null
       this.video = React.createRef()
@@ -631,20 +775,29 @@ export default withDocument(
             {needsSetup && this.renderSetupNotice()}
 
             {!needsSetup && (
-              <Uploader
-                buttons={this.renderVideoButtons()}
-                hasFocus={hasFocus}
-                // eslint-disable-next-line react/jsx-handler-names
-                onBlur={this.blur}
-                // eslint-disable-next-line react/jsx-handler-names
-                onFocus={this.focus}
-                onSetupButtonClicked={this.handleSetupButtonClicked}
-                onUploadComplete={this.handleOnUploadComplete}
-                secrets={secrets}
-                onBrowse={this.handleBrowseButton}
-              >
-                {this.renderAsset()}
-              </Uploader>
+              <>
+                <Uploader
+                  buttons={this.renderVideoButtons()}
+                  hasFocus={hasFocus}
+                  // eslint-disable-next-line react/jsx-handler-names
+                  onBlur={this.blur}
+                  // eslint-disable-next-line react/jsx-handler-names
+                  onFocus={this.focus}
+                  onSetupButtonClicked={this.handleSetupButtonClicked}
+                  onUploadComplete={this.handleOnUploadComplete}
+                  secrets={secrets}
+                  onBrowse={this.handleBrowseButton}
+                >
+                  {this.renderAsset()}
+                </Uploader>
+                {this.state.assetDocument && (
+                  <MuxCaptions
+                    documentId={this.state.assetDocument._id}
+                    assetId={this.state.assetDocument.assetId}
+                    tracks={this.state.assetDocument?.data?.tracks}
+                  />
+                )}
+              </>
             )}
 
             {thumb && (

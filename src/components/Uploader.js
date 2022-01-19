@@ -1,5 +1,5 @@
 import {UploadIcon} from '@sanity/icons'
-import {Button, Card, Grid} from '@sanity/ui'
+import {Button, Card, Grid, Box} from '@sanity/ui'
 import ButtonCollection from 'part:@sanity/components/buttons/button-collection'
 import DialogContent from 'part:@sanity/components/dialogs/content'
 import Dialog from 'part:@sanity/components/dialogs/default'

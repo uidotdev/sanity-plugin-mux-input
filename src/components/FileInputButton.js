@@ -17,6 +17,7 @@ const Label = styled.label`
 `
 
 const handleSelect = ({event, onSelect}) => {
+  console.log(event.target.files)
   if (onSelect) {
     onSelect(event.target.files)
   }
@@ -28,7 +29,7 @@ const handleButtonClick = (inputRef) => {
   }
 }
 
-export const FileInputButton = ({onSelect, type = 'file', ...props}) => {
+export const FileInputButton = ({onSelect, type = 'file', accept, ...props}) => {
   const _inputId = React.useRef(uniqueId('FileSelect'))
   const inputRef = React.useRef(null)
   return (
@@ -40,6 +41,7 @@ export const FileInputButton = ({onSelect, type = 'file', ...props}) => {
         id={_inputId.current}
         onChange={(event) => handleSelect({event, onSelect})}
         value=""
+        accept={accept}
       />
       <Button
         onClick={() => handleButtonClick(inputRef)}
