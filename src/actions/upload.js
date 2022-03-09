@@ -108,7 +108,7 @@ export function uploadFile(file, options = {}) {
                       if (event.type !== 'success') {
                         return of(event)
                       }
-                      return from(updateAssetDocumentFromUpload(uuid)).pipe(
+                      return from(updateAssetDocumentFromUpload(uuid, file.name)).pipe(
                         // eslint-disable-next-line max-nested-callbacks
                         mergeMap((doc) => of({...event, asset: doc}))
                       )
@@ -167,7 +167,7 @@ function pollUpload(uuid) {
   })
 }
 
-async function updateAssetDocumentFromUpload(uuid) {
+async function updateAssetDocumentFromUpload(uuid, filename) {
   let upload
   let asset
   try {
@@ -189,6 +189,7 @@ async function updateAssetDocumentFromUpload(uuid) {
     assetId: asset.data.id,
     playbackId: asset.data.playback_ids[0].id,
     uploadId: upload.data.id,
+    filename,
   }
   return client.createOrReplace(doc).then(() => {
     return doc

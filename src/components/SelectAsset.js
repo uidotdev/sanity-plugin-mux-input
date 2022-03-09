@@ -8,7 +8,13 @@ import styles from './SelectAsset.css'
 const PER_PAGE = 200
 
 function createQuery(start = 0, end = PER_PAGE) {
-  return `*[_type == "mux.videoAsset"] | order(_updatedAt desc) [${start}...${end}] {_id, playbackId, thumbTime, data}`
+  return `*[_type == "mux.videoAsset" && playbackId != null] | order(_updatedAt desc) [${start}...${end}] {
+    _id,
+    playbackId,
+    thumbTime,
+    data,
+    filename
+  }`
 }
 
 export default class SelectAsset extends React.Component {
@@ -75,48 +81,46 @@ export default class SelectAsset extends React.Component {
 
   render() {
     const {assets, isLastPage, isLoading, secrets} = this.state
-
     return (
       <div className={styles.root}>
         <div className={styles.imageList}>
           {assets.map((asset) => {
             const size = 80
-            const width = 100
-            const height = 100
+            const width = 320
+            const height = 180
             const posterUrl = getPosterSrc(asset.playbackId, {
               time: asset.thumbTime || 1,
               // eslint-disable-next-line camelcase
               fit_mode: 'smartcrop',
-              width: 100,
-              height: 100,
+              width: 320,
+              height: 180,
               isSigned: asset.data && asset.data.playback_ids[0].policy === 'signed',
               signingKeyId: secrets.signingKeyId || null,
               signingKeyPrivate: secrets.signingKeyPrivate || null,
             })
             return (
-              <a
-                key={asset._id}
-                className={styles.item}
-                data-id={asset._id}
-                onClick={this.handleItemClick}
-                onKeyPress={this.handleItemKeyPress}
-                tabIndex={0}
-                style={{
-                  width: `${(width * size) / height}px`,
-                  flexGrow: `${(width * size) / height}`,
-                }}
-              >
-                <i
-                  className={styles.padder}
-                  style={{paddingBottom: `${(height / width) * 100}%`}}
-                />
-                <img
-                  onError={this.handleImageError}
-                  src={posterUrl}
-                  className={styles.image}
-                  title={asset.filename || asset.playbackId}
-                />
-              </a>
+              <div>
+                <a
+                  key={asset._id}
+                  className={styles.item}
+                  data-id={asset._id}
+                  onClick={this.handleItemClick}
+                  onKeyPress={this.handleItemKeyPress}
+                  tabIndex={0}
+                >
+                  <i
+                    className={styles.padder}
+                    style={{paddingBottom: `${(height / width) * 100}%`}}
+                  />
+                  <img
+                    onError={this.handleImageError}
+                    src={posterUrl}
+                    className={styles.image}
+                    title={asset.filename || asset.playbackId}
+                  />
+                </a>
+                <p style={{whiteSpace: 'pre-wrap'}}>{asset.filename}</p>
+              </div>
             )
           })}
         </div>

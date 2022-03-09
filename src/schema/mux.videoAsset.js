@@ -1,8 +1,12 @@
 export default {
   name: 'mux.videoAsset',
-  type: 'object',
+  type: 'document',
   title: 'Video asset',
   fields: [
+    {
+      type: 'string',
+      name: 'filename',
+    },
     {
       type: 'string',
       name: 'status',
@@ -15,10 +19,7 @@ export default {
       type: 'string',
       name: 'playbackId',
     },
-    {
-      type: 'string',
-      name: 'filename',
-    },
+
     {
       type: 'number',
       name: 'thumbTime',

@@ -9,9 +9,8 @@
 .imageList {
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  margin: 0 -0.25rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
 }
 
 .imageList::after {
@@ -30,6 +29,7 @@
   height: 100%;
   vertical-align: bottom;
   box-sizing: border-box;
+  aspect-ratio: 16/9;
   background-color: var(--component-bg);
   object-fit: cover;
   border-radius: 0.1875rem;
