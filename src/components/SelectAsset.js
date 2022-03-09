@@ -8,13 +8,18 @@ import styles from './SelectAsset.css'
 const PER_PAGE = 200
 
 function createQuery(start = 0, end = PER_PAGE) {
-  return `*[_type == "mux.videoAsset" && playbackId != null] | order(_updatedAt desc) [${start}...${end}] {
+  return `*[_type == "mux.videoAsset" && playbackId != null && length(*[video.asset._ref == ^._id]) == 0] | order(_updatedAt desc) [${start}...${end}] {
     _id,
     playbackId,
     thumbTime,
     data,
-    filename
+    filename,
   }`
+}
+
+const stateCache = {
+  assets: [],
+  secrets: null,
 }
 
 export default class SelectAsset extends React.Component {
@@ -24,10 +29,11 @@ export default class SelectAsset extends React.Component {
     super(props)
 
     this.state = {
-      assets: [],
+      ...stateCache,
+      fromCache: true,
       isLastPage: false,
       isLoading: false,
-      secrets: null,
+      search: '',
     }
   }
 
@@ -36,17 +42,24 @@ export default class SelectAsset extends React.Component {
     const end = start + PER_PAGE
     this.setState({isLoading: true})
     return client.fetch(createQuery(start, end)).then((result) => {
-      this.setState((prevState) => ({
-        isLastPage: result.length === 0,
-        assets: prevState.assets.concat(result),
-        isLoading: false,
-      }))
+      this.setState((prevState) => {
+        stateCache.assets = prevState.assets.concat(result)
+        return {
+          isLastPage: result.length === 0,
+          assets: prevState.fromCache ? result : prevState.assets.concat(result),
+          isLoading: false,
+          fromCache: false,
+        }
+      })
     })
   }
 
   componentDidMount() {
     this.fetchPage(this.pageNo)
-    fetchSecrets().then(({secrets}) => this.setState({secrets}))
+    fetchSecrets().then(({secrets}) => {
+      this.setState({secrets})
+      stateCache.secrets = secrets
+    })
   }
 
   select(id) {
@@ -79,50 +92,61 @@ export default class SelectAsset extends React.Component {
     imageElm.height = 100
   }
 
+  handleSearchChange = (e) => {
+    this.setState({search: e.target.value})
+  }
   render() {
     const {assets, isLastPage, isLoading, secrets} = this.state
     return (
       <div className={styles.root}>
+        <div>
+          <input type="search" value={this.state.search} onChange={this.handleSearchChange} />
+        </div>
         <div className={styles.imageList}>
-          {assets.map((asset) => {
-            const size = 80
-            const width = 320
-            const height = 180
-            const posterUrl = getPosterSrc(asset.playbackId, {
-              time: asset.thumbTime || 1,
-              // eslint-disable-next-line camelcase
-              fit_mode: 'smartcrop',
-              width: 320,
-              height: 180,
-              isSigned: asset.data && asset.data.playback_ids[0].policy === 'signed',
-              signingKeyId: secrets.signingKeyId || null,
-              signingKeyPrivate: secrets.signingKeyPrivate || null,
-            })
-            return (
-              <div>
-                <a
-                  key={asset._id}
-                  className={styles.item}
-                  data-id={asset._id}
-                  onClick={this.handleItemClick}
-                  onKeyPress={this.handleItemKeyPress}
-                  tabIndex={0}
-                >
-                  <i
-                    className={styles.padder}
-                    style={{paddingBottom: `${(height / width) * 100}%`}}
-                  />
-                  <img
-                    onError={this.handleImageError}
-                    src={posterUrl}
-                    className={styles.image}
-                    title={asset.filename || asset.playbackId}
-                  />
-                </a>
-                <p style={{whiteSpace: 'pre-wrap'}}>{asset.filename}</p>
-              </div>
+          {assets
+            .filter((asset) =>
+              this.state.search
+                ? asset.filename.toLowerCase().includes(this.state.search.toLowerCase())
+                : true
             )
-          })}
+            .map((asset) => {
+              const size = 80
+              const width = 100
+              const height = 56
+              // const posterUrl = getPosterSrc(asset.playbackId, {
+              //   time: asset.thumbTime || 1,
+              //   // eslint-disable-next-line camelcase
+              //   fit_mode: 'smartcrop',
+              //   width: 100,
+              //   isSigned: asset.data && asset.data.playback_ids[0].policy === 'signed',
+              //   signingKeyId: secrets.signingKeyId || null,
+              //   signingKeyPrivate: secrets.signingKeyPrivate || null,
+              // })
+              return (
+                <div>
+                  <a
+                    key={asset._id}
+                    className={styles.item}
+                    data-id={asset._id}
+                    onClick={this.handleItemClick}
+                    onKeyPress={this.handleItemKeyPress}
+                    tabIndex={0}
+                  >
+                    {/* <i
+                      className={styles.padder}
+                      style={{paddingBottom: `${(height / width) * 100}%`}}
+                    />
+                    <img
+                      onError={this.handleImageError}
+                      src={posterUrl}
+                      className={styles.image}
+                      title={asset.filename || asset.playbackId}
+                    /> */}
+                    <p style={{whiteSpace: 'pre-wrap'}}>{asset.filename}</p>
+                  </a>
+                </div>
+              )
+            })}
         </div>
         <div className={styles.loadMore}>
           {!isLastPage && (
